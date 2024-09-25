@@ -88,7 +88,6 @@ export const capitalizeString = (str: string): string => {
   return str.charAt(0).toUpperCase() + str.slice(1);
 };
 ```
-```
 
 This format makes it easy to understand the structure of your code when sharing it with an LLM.
 
