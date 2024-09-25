@@ -1,75 +1,76 @@
 {
-  "name": "copy-to-llm",
-  "displayName": "Copy to LLM",
-  "description": "Copy directory or file contents to LLM format",
-  "version": "0.0.1",
-  "engines": {
-    "vscode": "^1.60.0"
-  },
-  "categories": [
-    "Other"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/TKasperczyk/vscode-copy-to-llm"
-  },
-  "activationEvents": [
-    "onCommand:extension.copyToLLM"
-  ],
-  "main": "./out/extension.js",
-  "contributes": {
-    "commands": [
-      {
-        "command": "extension.copyToLLM",
-        "title": "Copy to LLM"
-      }
-    ],
-    "menus": {
-      "explorer/context": [
-        {
-          "when": "explorerResourceIsFolder || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript",
-          "command": "extension.copyToLLM",
-          "group": "z_commands"
-        }
-      ]
+    "name": "copy-to-llm",
+    "displayName": "Copy to LLM",
+    "description": "Copy directory or file contents to LLM format",
+    "version": "0.0.1",
+    "engines": {
+      "vscode": "^1.60.0"
     },
-    "configuration": {
-      "type": "object",
-      "title": "Copy to LLM",
-      "properties": {
-        "copyToLLM.extensions": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [
-            ".ts",
-            ".tsx",
-            ".mjs",
-            ".ex",
-            ".heex",
-            ".svelte"
-          ],
-          "description": "File extensions to include when copying directories"
+    "categories": [
+      "Other"
+    ],
+    "icon": "icon.jpg",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/TKasperczyk/vscode-copy-to-llm"
+    },
+    "activationEvents": [
+      "onCommand:extension.copyToLLM"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+      "commands": [
+        {
+          "command": "extension.copyToLLM",
+          "title": "Copy to LLM"
+        }
+      ],
+      "menus": {
+        "explorer/context": [
+          {
+            "when": "explorerResourceIsFolder || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript",
+            "command": "extension.copyToLLM",
+            "group": "z_commands"
+          }
+        ]
+      },
+      "configuration": {
+        "type": "object",
+        "title": "Copy to LLM",
+        "properties": {
+          "copyToLLM.extensions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              ".ts",
+              ".tsx",
+              ".mjs",
+              ".ex",
+              ".heex",
+              ".svelte"
+            ],
+            "description": "File extensions to include when copying directories"
+          }
         }
       }
+    },
+    "scripts": {
+      "vscode:prepublish": "npm run compile",
+      "compile": "tsc -p ./",
+      "watch": "tsc -watch -p ./",
+      "pretest": "npm run compile && npm run lint",
+      "lint": "eslint src --ext ts",
+      "test": "node ./out/test/runTest.js",
+      "package": "vsce package"
+    },
+    "devDependencies": {
+      "@types/vscode": "^1.60.0",
+      "@types/node": "^14.14.37",
+      "@typescript-eslint/eslint-plugin": "^4.22.0",
+      "@typescript-eslint/parser": "^4.22.0",
+      "eslint": "^7.25.0",
+      "typescript": "^4.2.4"
     }
-  },
-  "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src --ext ts",
-    "test": "node ./out/test/runTest.js",
-    "package": "vsce package"
-  },
-  "devDependencies": {
-    "@types/vscode": "^1.60.0",
-    "@types/node": "^14.14.37",
-    "@typescript-eslint/eslint-plugin": "^4.22.0",
-    "@typescript-eslint/parser": "^4.22.0",
-    "eslint": "^7.25.0",
-    "typescript": "^4.2.4"
   }
-}
