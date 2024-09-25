@@ -9,7 +9,7 @@
     "categories": [
       "Other"
     ],
-    "icon": "icon.jpg",
+    "icon": "icon.png",
     "repository": {
       "type": "git",
       "url": "https://github.com/TKasperczyk/vscode-copy-to-llm"
