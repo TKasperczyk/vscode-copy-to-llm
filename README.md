@@ -115,8 +115,6 @@ If you encounter any issues or have suggestions for improvements, please [open a
 
 Special thanks to all the contributors and users who have helped improve this extension. Your feedback and support are greatly appreciated!
 
-```
-
 <div align="center">
   Made with ❤️ by developers, for developers
 </div>
