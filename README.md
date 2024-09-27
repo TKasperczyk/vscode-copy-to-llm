@@ -12,7 +12,11 @@ Streamline your workflow with LLMs using this powerful VS Code extension!
 
 </div>
 
+<div align="center">
+
 ![Presentation GIF](presentation.gif)
+
+</div>
 
 ## Overview
 
