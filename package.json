@@ -2,7 +2,7 @@
     "name": "copy-to-llm",
     "displayName": "Copy to LLM",
     "description": "Copy directory or file contents to LLM format",
-    "version": "0.0.2",
+    "version": "0.0.3",
     "engines": {
         "vscode": "^1.60.0"
     },
