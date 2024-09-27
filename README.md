@@ -12,6 +12,8 @@ Streamline your workflow with LLMs using this powerful VS Code extension!
 
 </div>
 
+![Presentation GIF](presentation.gif)
+
 ## Overview
 
 "Copy to LLM" is a Visual Studio Code extension designed to simplify the process of collecting and formatting code for use with Large Language Models (LLMs) like ChatGPT. With just a few clicks, you can compile the contents of selected files or entire directories into a format that's optimized for LLM input.
@@ -40,7 +42,7 @@ Alternatively, you can install the extension from the [Visual Studio Code Market
 ### Copy a Single File
 1. Right-click on a file in the Explorer
 2. Select "Copy to LLM"
-3. The file's content will be copied to your clipboard in a formatted manner
+3. A new document will open containing the formatted content of the selected file
 
 ### Process Multiple Files or Folders
 1. Select multiple files and/or folders in the Explorer (use Ctrl/Cmd+Click for multi-select)
@@ -52,6 +54,8 @@ Alternatively, you can install the extension from the [Visual Studio Code Market
 1. Right-click on a folder in the Explorer
 2. Select "Copy to LLM"
 3. A new document will open with the formatted content of all matching files in the folder and its subfolders
+
+You can copy the contents of the new document and paste it as the prompt of your LLM.
 
 ## Configuration
 
