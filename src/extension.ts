@@ -1,7 +1,8 @@
 "use strict";
+import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
-import * as vscode from "vscode";
+import { Minimatch } from "minimatch";
 
 export function activate(context: vscode.ExtensionContext) {
   let disposable = vscode.commands.registerCommand(
@@ -189,6 +190,8 @@ async function getFilesByExtensions(dirPath: string): Promise<string[]> {
     ".properties",
     ".ics",
   ]);
+  const ignorePatterns = config.get<string[]>("ignore", []);
+  const minimatchers = ignorePatterns.map(pattern => new Minimatch(pattern, { dot: true }));
 
   async function traverse(currentPath: string) {
     const entries = await fs.promises.readdir(currentPath, {
@@ -196,6 +199,19 @@ async function getFilesByExtensions(dirPath: string): Promise<string[]> {
     });
     for (const entry of entries) {
       const fullPath = path.join(currentPath, entry.name);
+      const relativePath = path.relative(dirPath, fullPath);
+
+      let isIgnored = false;
+      for (const matcher of minimatchers) {
+        if (matcher.match(relativePath)) {
+          isIgnored = true;
+          break;
+        }
+      }
+      if (isIgnored) {
+        continue;
+      }
+
       if (entry.isDirectory()) {
         await traverse(fullPath);
       } else if (entry.isFile() && !fullPath.includes("shadcn")) {

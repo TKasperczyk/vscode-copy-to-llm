@@ -115,6 +115,14 @@
           "type": "boolean",
           "default": false,
           "description": "Accompany the file name with the directory in which it is located within the project"
+        },
+        "copyToLLM.ignore": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "An array of glob patterns to ignore when copying files and directories."
         }
       }
     }
@@ -129,11 +137,12 @@
     "package": "vsce package"
   },
   "devDependencies": {
-    "@types/vscode": "^1.60.0",
     "@types/node": "^14.14.37",
+    "@types/vscode": "^1.60.0",
     "@typescript-eslint/eslint-plugin": "^4.22.0",
     "@typescript-eslint/parser": "^4.22.0",
     "eslint": "^7.25.0",
+    "minimatch": "^10.0.3",
     "typescript": "^4.2.4"
   }
 }
