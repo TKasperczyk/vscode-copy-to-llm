@@ -20,7 +20,7 @@ Streamline your workflow with LLMs using this powerful VS Code extension!
 
 ## Overview
 
-"Copy to LLM" is a Visual Studio Code extension designed to simplify the process of collecting and formatting code for use with Large Language Models (LLMs) like ChatGPT. With just a few clicks, you can compile the contents of selected files or entire directories into a format that's optimized for LLM input.
+"Copy to LLM" is a Visual Studio Code extension designed to simplify the process of collecting and formatting code (or diffs or selections) for use with Large Language Models (LLMs) like ChatGPT. With just a few clicks, you can assemble exactly what you need—full files, directory trees, code snippets, or Git diffs—into a format optimized for prompt input.
 
 ## Features
 
@@ -31,6 +31,8 @@ Streamline your workflow with LLMs using this powerful VS Code extension!
 - **Formatted Output:** Generate well-structured content with file paths and appropriate code blocks.
 - **Clipboard Support:** Quickly copy single file contents to your clipboard.
 - **New Document Creation:** Open compiled content in a new VS Code document for easy editing and review.
+- **Copy Selection:** Copy one or more highlighted code blocks—each annotated with `path:line-start–line-end` and fenced with the proper language ID.
+- **Copy Git Diff:** Grab `git diff` (or unstaged changes) for selected files even including submodules and format it as a single diff block.
 
 ## Installation
 
@@ -59,7 +61,17 @@ Alternatively, you can install the extension from the [Visual Studio Code Market
 2. Select "Copy to LLM"
 3. A new document will open with the formatted content of all matching files in the folder and its subfolders
 
-You can copy the contents of the new document and paste it as the prompt of your LLM.
+### Copy Selected Text Blocks
+1. In any editor, highlight one or more ranges.  
+2. Open the Command Palette "Copy Selection to LLM".  
+3. Each block is annotated as `relative/path/file.ts:5–10`, fenced with ```ts```, etc.  
+4. Preview opens (if enabled) and your clipboard contains the combined snippet.
+
+### Copy Git Diff
+1. In the Source Control view, select changed files (or leave none to diff the entire workspace).  
+2. Right-click "Copy Diff to LLM" (or use the Command Palette).  
+3. Diffs from submodules are automatically included and grouped.  
+4. Preview opens (if enabled) and your clipboard holds a single ````diff```` block.
 
 ## Configuration
 
@@ -74,6 +86,7 @@ You can customize the extension behavior via **Settings** → **Extensions** →
 | ---------------------------- | ------------------------------ | ------------ | ------------------------------------------------------ | ------------------------------------------------------------------------------------- |
 | **Extensions**         | `copyToLLM.extensions`       | `string[]` | `[".ts", ".tsx", ".mjs", ".ex", ".heex", ".svelte"]` | File extensions to include when copying directories.                                  |
 | **Use Relative Paths** | `copyToLLM.useRelativePaths` | `boolean`  | `false`                                              | Always accompany the file name with the directory in which it is located within the project. |
+| **Show Preview**       | `copyToLLM.showPreview`      | `boolean`  | `true`                                                                                    | If `false`, skip opening a Markdown preview editor after copying.           |
 
 ### JSON Configuration Example
 
@@ -85,9 +98,11 @@ You can customize the extension behavior via **Settings** → **Extensions** →
     ".mjs",
     ".ex",
     ".heex",
-    ".svelte"
+    ".svelte",
+    ".cs"
   ],
-  "copyToLLM.useRelativePaths": true
+  "copyToLLM.useRelativePaths": true,
+  "copyToLLM.showPreview": false
 }
 ```
 
@@ -113,8 +128,45 @@ export const capitalizeString = (str: string): string => {
 };
 ```
 ````
-
 This format makes it easy to understand the structure of your code when sharing it with an LLM.
+
+> **Copying two files**:
+
+````markdown
+src/Button.tsx:1–10
+```tsx
+import React from 'react';
+
+const Button = ({ label, onClick }) => (
+  <button onClick={onClick}>{label}</button>
+);
+
+export default Button;
+````
+
+src/helpers.ts:1–8
+
+```ts
+export const capitalize = (s: string) =>
+  s.charAt(0).toUpperCase() + s.slice(1);
+```
+
+> **Copying a Git diff**:
+
+```diff
+diff --git a/src/index.ts b/src/index.ts
+index abc123..def456 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -10,7 +10,9 @@ import { foo } from './foo';
+
+ function main() {
+-  console.log('Hello');
++  console.log('Hello, world!');
++  // Added greeting
+ }
+
+```
 
 ## Contributing
 

@@ -16,7 +16,9 @@
     "url": "https://github.com/TKasperczyk/vscode-copy-to-llm"
   },
   "activationEvents": [
-    "onCommand:extension.copyToLLM"
+    "onCommand:extension.copyToLLM",
+    "onCommand:extension.copySelectionToLLM",
+    "onCommand:extension.copyDiffToLLM"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -24,6 +26,14 @@
       {
         "command": "extension.copyToLLM",
         "title": "Copy to LLM"
+      },
+      {
+        "command": "extension.copySelectionToLLM",
+        "title": "Copy Selection to LLM"
+      },
+      {
+        "command": "extension.copyDiffToLLM",
+        "title": "Copy Git Diff to LLM"
       }
     ],
     "menus": {
@@ -32,6 +42,31 @@
           "command": "extension.copyToLLM",
           "group": "z_commands",
           "when": "explorerResourceIsFolder || resourceScheme == 'file'"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "extension.copyDiffToLLM",
+          "group": "z_commands"
+        }
+      ],
+      "scm/resourceState/context": [
+        {
+          "command": "extension.copyDiffToLLM",
+          "group": "z_commands",
+          "isMultiResourceCommand": true
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "extension.copyDiffToLLM",
+          "group": "z_commands",
+          "when": "isInDiffEditor"
+        },
+        {
+          "command": "extension.copySelectionToLLM",
+          "group": "z_commands",
+          "when": "editorHasSelection"
         }
       ]
     },
@@ -92,6 +127,7 @@
             ".cpp",
             ".h",
             ".hpp",
+            ".cs",
             ".go",
             ".rs",
             ".swift",
@@ -116,6 +152,11 @@
           "default": false,
           "description": "Accompany the file name with the directory in which it is located within the project"
         },
+        "copyToLLM.showPreview": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open a new editor tab showing the formatted content after copying."
+        },
         "copyToLLM.ignore": {
           "type": "array",
           "items": {
@@ -136,13 +177,15 @@
     "test": "node ./out/test/runTest.js",
     "package": "vsce package"
   },
+  "dependencies": {
+    "minimatch": "^10.0.3"
+  },
   "devDependencies": {
     "@types/node": "^14.14.37",
     "@types/vscode": "^1.60.0",
     "@typescript-eslint/eslint-plugin": "^4.22.0",
     "@typescript-eslint/parser": "^4.22.0",
     "eslint": "^7.25.0",
-    "minimatch": "^10.0.3",
     "typescript": "^4.2.4"
   }
 }
