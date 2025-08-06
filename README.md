@@ -130,29 +130,21 @@ export const capitalizeString = (str: string): string => {
 ````
 This format makes it easy to understand the structure of your code when sharing it with an LLM.
 
-> **Copying two files**:
+> **Copying selection**:
 
 ````markdown
-src/Button.tsx:1–10
-```tsx
-import React from 'react';
-
-const Button = ({ label, onClick }) => (
-  <button onClick={onClick}>{label}</button>
-);
-
-export default Button;
-````
-
-src/helpers.ts:1–8
-
-```ts
-export const capitalize = (s: string) =>
-  s.charAt(0).toUpperCase() + s.slice(1);
+src/extension.ts:531-534
+```typescript
+  const document = await vscode.workspace.openTextDocument({
+    content: content,
+    language: "markdown",
+  });
 ```
+````
 
 > **Copying a Git diff**:
 
+````markdown
 ```diff
 diff --git a/src/index.ts b/src/index.ts
 index abc123..def456 100644
@@ -165,8 +157,8 @@ index abc123..def456 100644
 +  console.log('Hello, world!');
 +  // Added greeting
  }
-
 ```
+````
 
 ## Contributing
 
