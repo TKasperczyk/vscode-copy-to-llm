@@ -3,10 +3,45 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { Minimatch } from "minimatch";
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+/**
+ * Safely execute a git command with proper argument handling (no shell injection)
+ */
+async function gitCommand(args: string[], cwd: string): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync("git", args, { cwd });
+    return stdout;
+  } catch (err: any) {
+    // If git command fails, return empty string (e.g., no diff)
+    if (err.stdout !== undefined) {
+      return err.stdout;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Parse git submodule status output into structured data
+ */
+function parseSubmoduleStatus(stdout: string, workspaceRoot: string): { name: string; path: string }[] {
+  return stdout.split('\n')
+    .filter(line => line.trim())
+    .map(line => {
+      // Match git submodule status line: [+-]<sha> <path> (<branch>)
+      const match = line.match(/^\s*[+-]?([a-f0-9]+)\s+(.+?)(?:\s+\(.+\))?$/);
+      if (match) {
+        const submodulePath = path.resolve(workspaceRoot, match[2]);
+        const submoduleName = path.basename(match[2]);
+        return { name: submoduleName, path: submodulePath };
+      }
+      return null;
+    })
+    .filter((item): item is { name: string; path: string } => item !== null);
+}
 
 export function activate(context: vscode.ExtensionContext) {
   let disposable = vscode.commands.registerCommand(
@@ -29,13 +64,17 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       if (selectedUris && selectedUris.length > 0) {
-        copySelectedToLLM(selectedUris);
+        await copySelectedToLLM(selectedUris);
       } else if (uri && uri.scheme === "file") {
-        const stats = fs.statSync(uri.fsPath);
-        if (stats.isDirectory()) {
-          copyFolderToLLM([uri]);
-        } else if (stats.isFile()) {
-          copyFileToClipboard(uri.fsPath);
+        try {
+          const stats = fs.statSync(uri.fsPath);
+          if (stats.isDirectory()) {
+            await copyFolderToLLM([uri]);
+          } else if (stats.isFile()) {
+            await copyFileToClipboard(uri.fsPath);
+          }
+        } catch (err: any) {
+          vscode.window.showErrorMessage(`Cannot access path: ${err.message}`);
         }
       }
     }
@@ -57,7 +96,7 @@ export function activate(context: vscode.ExtensionContext) {
 
       const doc = editor.document;
       const langId = doc.languageId || "";
-      const filePath = getDisplayPath(doc.fileName); // helper already defined
+      const filePath = getDisplayPath(doc.fileName);
 
       const blocks = editor.selections.map((sel: vscode.Selection) => {
         const text = doc.getText(sel);
@@ -68,7 +107,7 @@ export function activate(context: vscode.ExtensionContext) {
       const content = blocks.join("\n\n");
       await vscode.env.clipboard.writeText(content);
       vscode.window.showInformationMessage("Selection copied to clipboard");
-      await ShowPreview(content);
+      await showPreview(content);
     }
   );
   context.subscriptions.push(copySel);
@@ -76,7 +115,6 @@ export function activate(context: vscode.ExtensionContext) {
   const copyDiff = vscode.commands.registerCommand(
     "extension.copyDiffToLLM",
     async (...args: any[]) => {
-
       const wsFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       if (!wsFolder) {
         vscode.window.showWarningMessage("No open workspace - nothing to diff.");
@@ -88,8 +126,8 @@ export function activate(context: vscode.ExtensionContext) {
         ? args[0]
         : args;
       const picked = flattened
-              .map((r: any) => (r?.resourceUri ?? r)?.fsPath)
-              .filter(Boolean);
+        .map((r: any) => (r?.resourceUri ?? r)?.fsPath)
+        .filter(Boolean);
 
       let allDiffs: string[] = [];
 
@@ -98,61 +136,61 @@ export function activate(context: vscode.ExtensionContext) {
           // Handle specific files/paths, including submodules
           for (const filePath of picked) {
             const relativePath = path.relative(wsFolder, filePath);
-          
+
             // Check if this file is in a submodule
             const submoduleInfo = await getSubmoduleInfo(wsFolder, filePath);
-          
+
             if (submoduleInfo) {
               // Handle submodule file
               const submoduleRelativePath = path.relative(submoduleInfo.path, filePath);
-              
+
               try {
-                const { stdout } = await execAsync(
-                  `git diff HEAD -- "${submoduleRelativePath}"`,
-                  { cwd: submoduleInfo.path }
+                const stdout = await gitCommand(
+                  ["diff", "HEAD", "--", submoduleRelativePath],
+                  submoduleInfo.path
                 );
-                
+
                 if (stdout.trim()) {
                   allDiffs.push(`# Submodule: ${submoduleInfo.name}\n${stdout}`);
                 }
-              } catch (subErr: any) {
+              } catch {
                 // Try unstaged changes in submodule
                 try {
-                  const { stdout: unstagedDiff } = await execAsync(
-                    `git diff -- "${submoduleRelativePath}"`,
-                    { cwd: submoduleInfo.path }
+                  const unstagedDiff = await gitCommand(
+                    ["diff", "--", submoduleRelativePath],
+                    submoduleInfo.path
                   );
-                  
+
                   if (unstagedDiff.trim()) {
                     allDiffs.push(`# Submodule: ${submoduleInfo.name} (unstaged)\n${unstagedDiff}`);
                   }
                 } catch {
-                  console.warn(`Could not get diff for submodule file: ${filePath}`);
+                  // Silently ignore - file may not have changes
                 }
               }
             } else {
               // Handle regular file
               try {
-                const { stdout } = await execAsync(
-                  `git diff HEAD -- "${relativePath}"`,
-                  { cwd: wsFolder }
+                const stdout = await gitCommand(
+                  ["diff", "HEAD", "--", relativePath],
+                  wsFolder
                 );
-                
+
                 if (stdout.trim()) {
                   allDiffs.push(stdout);
                 } else {
                   // Try unstaged changes
-                  const { stdout: unstagedDiff } = await execAsync(
-                    `git diff -- "${relativePath}"`,
-                    { cwd: wsFolder }
+                  const unstagedDiff = await gitCommand(
+                    ["diff", "--", relativePath],
+                    wsFolder
                   );
-                  
+
                   if (unstagedDiff.trim()) {
                     allDiffs.push(unstagedDiff);
                   }
                 }
-              } catch (err: any) {
-                console.warn(`Could not get diff for file: ${filePath}`, err);
+              } catch {
+                // Silently ignore - file may not have changes
               }
             }
           }
@@ -160,76 +198,63 @@ export function activate(context: vscode.ExtensionContext) {
           // No specific files selected, get all changes including submodules
           // Get main repository changes
           try {
-            const { stdout: mainDiff } = await execAsync(
-              "git diff HEAD",
-              { cwd: wsFolder }
-            );
-          
+            const mainDiff = await gitCommand(["diff", "HEAD"], wsFolder);
+
             if (mainDiff.trim()) {
               allDiffs.push(mainDiff);
             } else {
               // Try unstaged changes
-              const { stdout: unstagedDiff } = await execAsync(
-                "git diff",
-                { cwd: wsFolder }
-              );
-            
+              const unstagedDiff = await gitCommand(["diff"], wsFolder);
+
               if (unstagedDiff.trim()) {
                 allDiffs.push(unstagedDiff);
               }
             }
-          } catch (err: any) {
-            console.warn("Could not get main repository diff:", err);
+          } catch {
+            // Silently ignore - repo may not have changes
           }
 
           // Get submodule changes
           const submodules = await getSubmodules(wsFolder);
           for (const submodule of submodules) {
             try {
-              const { stdout: subDiff } = await execAsync(
-                "git diff HEAD",
-                { cwd: submodule.path }
-              );
-              
+              const subDiff = await gitCommand(["diff", "HEAD"], submodule.path);
+
               if (subDiff.trim()) {
                 allDiffs.push(`# Submodule: ${submodule.name}\n${subDiff}`);
               } else {
                 // Try unstaged changes in submodule
-                const { stdout: unstagedSubDiff } = await execAsync(
-                  "git diff",
-                  { cwd: submodule.path }
-                );
-                
+                const unstagedSubDiff = await gitCommand(["diff"], submodule.path);
+
                 if (unstagedSubDiff.trim()) {
                   allDiffs.push(`# Submodule: ${submodule.name} (unstaged)\n${unstagedSubDiff}`);
                 }
               }
-            } catch (err: any) {
-              console.warn(`Could not get diff for submodule ${submodule.name}:`, err);
+            } catch {
+              // Silently ignore - submodule may not have changes
             }
           }
         }
-
-        } catch (err: any) {
-          vscode.window.showErrorMessage(
-            `Git diff failed: ${err.message ?? err}`
-          );
-          return;
-        }
-
-        if (allDiffs.length === 0) {
-          vscode.window.showInformationMessage("No changes to diff.");
-          return;
-        }
-
-        // Combine all diffs
-        const combinedDiff = allDiffs.join("\n\n");
-        const content = "```diff\n" + combinedDiff + "\n```";
-    
-        await vscode.env.clipboard.writeText(content);
-        vscode.window.showInformationMessage("Git diff copied to clipboard.");
-        await ShowPreview(content);
+      } catch (err: any) {
+        vscode.window.showErrorMessage(
+          `Git diff failed: ${err.message ?? err}`
+        );
+        return;
       }
+
+      if (allDiffs.length === 0) {
+        vscode.window.showInformationMessage("No changes to diff.");
+        return;
+      }
+
+      // Combine all diffs
+      const combinedDiff = allDiffs.join("\n\n");
+      const content = "```diff\n" + combinedDiff + "\n```";
+
+      await vscode.env.clipboard.writeText(content);
+      vscode.window.showInformationMessage("Git diff copied to clipboard.");
+      await showPreview(content);
+    }
   );
   context.subscriptions.push(copyDiff);
 }
@@ -237,30 +262,8 @@ export function activate(context: vscode.ExtensionContext) {
 // Helper function to get submodule information for a given file path
 async function getSubmoduleInfo(workspaceRoot: string, filePath: string): Promise<{ name: string; path: string } | null> {
   try {
-    const { stdout } = await execAsync(
-      "git submodule status --recursive",
-      { cwd: workspaceRoot }
-    );
-    
-    const submodules = stdout.split('\n')
-      .filter(line => line.trim())
-      .map(line => {
-        // Match a git submodule status line for example 1e2d3f4 libs/foo (heads/main)
-        //   ^\s*[+-]?            optional whitespace plus optional + or - status flag
-        //   ([a-f0-9]+)          capture: abbreviated (or full) commit SHA
-        //   \s+                  at least one space
-        //   (.+?)                capture: sub-module path
-        //   (?:\s+\(.+\))?       optional branch/tag info in parentheses
-        //   $                    end of line
-        const match = line.match(/^\s*[+-]?([a-f0-9]+)\s+(.+?)(?:\s+\(.+\))?$/);
-        if (match) {
-          const submodulePath = path.resolve(workspaceRoot, match[2]);
-          const submoduleName = path.basename(match[2]);
-          return { name: submoduleName, path: submodulePath };
-        }
-        return null;
-      })
-      .filter(Boolean) as { name: string; path: string }[];
+    const stdout = await gitCommand(["submodule", "status", "--recursive"], workspaceRoot);
+    const submodules = parseSubmoduleStatus(stdout, workspaceRoot);
 
     // Check if the file path is within any submodule
     for (const submodule of submodules) {
@@ -268,9 +271,9 @@ async function getSubmoduleInfo(workspaceRoot: string, filePath: string): Promis
         return submodule;
       }
     }
-    
+
     return null;
-  } catch (err) {
+  } catch {
     return null;
   }
 }
@@ -278,24 +281,9 @@ async function getSubmoduleInfo(workspaceRoot: string, filePath: string): Promis
 // Helper function to get all submodules
 async function getSubmodules(workspaceRoot: string): Promise<{ name: string; path: string }[]> {
   try {
-    const { stdout } = await execAsync(
-      "git submodule status --recursive",
-      { cwd: workspaceRoot }
-    );
-    
-    return stdout.split('\n')
-      .filter(line => line.trim())
-      .map(line => {
-        const match = line.match(/^\s*[+-]?([a-f0-9]+)\s+(.+?)(?:\s+\(.+\))?$/);
-        if (match) {
-          const submodulePath = path.resolve(workspaceRoot, match[2]);
-          const submoduleName = path.basename(match[2]);
-          return { name: submoduleName, path: submodulePath };
-        }
-        return null;
-      })
-      .filter(Boolean) as { name: string; path: string }[];
-  } catch (err) {
+    const stdout = await gitCommand(["submodule", "status", "--recursive"], workspaceRoot);
+    return parseSubmoduleStatus(stdout, workspaceRoot);
+  } catch {
     return [];
   }
 }
@@ -332,10 +320,21 @@ async function getExplorerSelection(): Promise<vscode.Uri[] | undefined> {
 }
 
 async function copySelectedToLLM(uris: vscode.Uri[]) {
-  const directories = uris.filter((uri) =>
-    fs.statSync(uri.fsPath).isDirectory()
-  );
-  const files = uris.filter((uri) => fs.statSync(uri.fsPath).isFile());
+  const directories: vscode.Uri[] = [];
+  const files: vscode.Uri[] = [];
+
+  for (const uri of uris) {
+    try {
+      const stats = fs.statSync(uri.fsPath);
+      if (stats.isDirectory()) {
+        directories.push(uri);
+      } else if (stats.isFile()) {
+        files.push(uri);
+      }
+    } catch {
+      // Skip inaccessible paths
+    }
+  }
 
   let content = "";
 
@@ -347,15 +346,19 @@ async function copySelectedToLLM(uris: vscode.Uri[]) {
 
   // Process individual files
   for (const file of files) {
-    const fileContent = await fs.promises.readFile(file.fsPath, "utf-8");
-    const label = getDisplayPath(file.fsPath);
-    content += `${label}:\n\`\`\`\n${fileContent}\n\`\`\`\n\n`;
+    try {
+      const fileContent = await fs.promises.readFile(file.fsPath, "utf-8");
+      const label = getDisplayPath(file.fsPath);
+      content += `${label}:\n\`\`\`\n${fileContent}\n\`\`\`\n\n`;
+    } catch {
+      // Skip unreadable files
+    }
   }
 
   await vscode.env.clipboard.writeText(content);
   vscode.window.showInformationMessage("Content copied to clipboard");
 
-  await ShowPreview(content);
+  await showPreview(content);
 }
 
 async function copyFolderToLLM(uris: vscode.Uri[]) {
@@ -368,15 +371,19 @@ async function copyFolderToLLM(uris: vscode.Uri[]) {
   await vscode.env.clipboard.writeText(content);
   vscode.window.showInformationMessage("Content copied to clipboard");
 
-  await ShowPreview(content);
+  await showPreview(content);
 }
 
 async function copyFileToClipboard(filePath: string) {
-  const fileContent = await fs.promises.readFile(filePath, "utf-8");
-  const label = getDisplayPath(filePath);
-  const content = `${label}:\n\`\`\`\n${fileContent}\n\`\`\``;
-  await vscode.env.clipboard.writeText(content);
-  vscode.window.showInformationMessage("Content copied to clipboard");
+  try {
+    const fileContent = await fs.promises.readFile(filePath, "utf-8");
+    const label = getDisplayPath(filePath);
+    const content = `${label}:\n\`\`\`\n${fileContent}\n\`\`\``;
+    await vscode.env.clipboard.writeText(content);
+    vscode.window.showInformationMessage("Content copied to clipboard");
+  } catch (err: any) {
+    vscode.window.showErrorMessage(`Cannot read file: ${err.message}`);
+  }
 }
 
 async function getFilesByExtensions(dirPath: string): Promise<string[]> {
@@ -453,32 +460,36 @@ async function getFilesByExtensions(dirPath: string): Promise<string[]> {
   const minimatchers = ignorePatterns.map(pattern => new Minimatch(pattern, { dot: true }));
 
   async function traverse(currentPath: string) {
-    const entries = await fs.promises.readdir(currentPath, {
-      withFileTypes: true,
-    });
-    for (const entry of entries) {
-      const fullPath = path.join(currentPath, entry.name);
-      const relativePath = path.relative(dirPath, fullPath);
+    try {
+      const entries = await fs.promises.readdir(currentPath, {
+        withFileTypes: true,
+      });
+      for (const entry of entries) {
+        const fullPath = path.join(currentPath, entry.name);
+        const relativePath = path.relative(dirPath, fullPath);
 
-      let isIgnored = false;
-      for (const matcher of minimatchers) {
-        if (matcher.match(relativePath)) {
-          isIgnored = true;
-          break;
+        let isIgnored = false;
+        for (const matcher of minimatchers) {
+          if (matcher.match(relativePath)) {
+            isIgnored = true;
+            break;
+          }
+        }
+        if (isIgnored) {
+          continue;
+        }
+
+        if (entry.isDirectory()) {
+          await traverse(fullPath);
+        } else if (entry.isFile()) {
+          const fileExtension = path.extname(entry.name);
+          if (extensions.includes(fileExtension)) {
+            files.push(fullPath);
+          }
         }
       }
-      if (isIgnored) {
-        continue;
-      }
-
-      if (entry.isDirectory()) {
-        await traverse(fullPath);
-      } else if (entry.isFile() && !fullPath.includes("shadcn")) {
-        const fileExtension = path.extname(entry.name);
-        if (extensions.includes(fileExtension)) {
-          files.push(fullPath);
-        }
-      }
+    } catch {
+      // Skip inaccessible directories
     }
   }
   await traverse(dirPath);
@@ -491,9 +502,13 @@ async function generateContent(
 ): Promise<string> {
   let content = "";
   for (const file of files) {
-    const fileContent = await fs.promises.readFile(file, "utf-8");
-    const label = getDisplayPath(file, basePath);
-    content += `${label}:\n\`\`\`\n${fileContent}\n\`\`\`\n\n`;
+    try {
+      const fileContent = await fs.promises.readFile(file, "utf-8");
+      const label = getDisplayPath(file, basePath);
+      content += `${label}:\n\`\`\`\n${fileContent}\n\`\`\`\n\n`;
+    } catch {
+      // Skip unreadable files
+    }
   }
   return content;
 }
@@ -502,13 +517,13 @@ function getDisplayPath(filePath: string, basePathOverride?: string): string {
   const config = vscode.workspace.getConfiguration("copyToLLM");
   const useRelative = config.get<boolean>("useRelativePaths", false);
   if (useRelative) {
-    const wsFolder = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+    const wsFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (wsFolder) {
-      // ruta relativa al workspace root, con slashes Unix
+      // Return path relative to workspace root, with Unix-style slashes
       return path.relative(wsFolder, filePath).replace(/\\/g, "/");
     }
   }
-  // comportamiento por defecto: mismo que antes
+  // Default behavior: same as before
   if (basePathOverride) {
     const relativeToBase = path
       .relative(basePathOverride, filePath)
@@ -520,13 +535,14 @@ function getDisplayPath(filePath: string, basePathOverride?: string): string {
   }
 }
 
-async function ShowPreview(content: string) {
-  let show = vscode.workspace
+async function showPreview(content: string) {
+  const show = vscode.workspace
     .getConfiguration("copyToLLM")
     .get<boolean>("showPreview", true);
 
-  if (!show)
+  if (!show) {
     return;
+  }
 
   const document = await vscode.workspace.openTextDocument({
     content: content,
