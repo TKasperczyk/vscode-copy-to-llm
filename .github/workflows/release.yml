@@ -1,0 +1,135 @@
+name: Build & Publish VS Code Extension
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile TypeScript
+        run: npm run compile
+
+      - name: Package VSIX
+        run: npx @vscode/vsce package
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix-package
+          path: '*.vsix'
+
+  # ──────────────────────────────────────────────────────────────────
+  # Option A: PAT-based publishing (works immediately)
+  #   1. Create a PAT at https://dev.azure.com — Marketplace (Manage) scope
+  #   2. Add it as repository secret VSCE_PAT
+  #   3. Create a GitHub environment "vscode-marketplace"
+  # ──────────────────────────────────────────────────────────────────
+  publish-pat:
+    name: Publish (PAT)
+    needs: build
+    runs-on: ubuntu-latest
+    if: >
+      startsWith(github.ref, 'refs/tags/v')
+      && vars.PUBLISH_METHOD != 'oidc'
+    environment: vscode-marketplace
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile TypeScript
+        run: npm run compile
+
+      - name: Set version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          npm version "$VERSION" --no-git-tag-version
+
+      - name: Publish to VS Code Marketplace
+        run: npx @vscode/vsce publish --no-update-package-json
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+  # ──────────────────────────────────────────────────────────────────
+  # Option B: OIDC publishing (no stored secrets)
+  #   One-time Azure setup required:
+  #   1. Register app in Microsoft Entra ID (portal.azure.com)
+  #   2. Add federated credential:
+  #      - Issuer: https://token.actions.githubusercontent.com
+  #      - Subject: repo:luutuankiet/vscode-copy-to-llm:environment:vscode-marketplace
+  #   3. Add the service principal to your VS Code Marketplace publisher
+  #   4. Set repository variables:
+  #      - AZURE_CLIENT_ID  (from app registration)
+  #      - AZURE_TENANT_ID  (from app registration)
+  #      - PUBLISH_METHOD = "oidc"
+  # ──────────────────────────────────────────────────────────────────
+  publish-oidc:
+    name: Publish (OIDC)
+    needs: build
+    runs-on: ubuntu-latest
+    if: >
+      startsWith(github.ref, 'refs/tags/v')
+      && vars.PUBLISH_METHOD == 'oidc'
+    environment: vscode-marketplace
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile TypeScript
+        run: npm run compile
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Set version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          npm version "$VERSION" --no-git-tag-version
+
+      - name: Publish to VS Code Marketplace (OIDC token)
+        run: |
+          TOKEN=$(az account get-access-token \
+            --resource 499b84ac-1321-427f-aa17-267ca6975798 \
+            --query accessToken -o tsv)
+          npx @vscode/vsce publish --no-update-package-json --pat "$TOKEN"

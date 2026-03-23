@@ -53,15 +53,13 @@ async function rtkReadFile(filePath: string): Promise<string> {
  * Generate compressed content using RTK with parallel execution
  */
 async function generateCompressedContent(files: string[]): Promise<string> {
-  const wsFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
-
   const results = await Promise.all(
     files.map((file) =>
       rtkLimit(async () => {
         try {
           const compressed = await rtkReadFile(file);
-          const relativePath = path.relative(wsFolder, file).replace(/\\/g, "/");
-          return `<file src="${relativePath}">\n${compressed}</file>`;
+          const absolutePath = file.replace(/\\/g, "/");
+          return `<file src="${absolutePath}">\n${compressed}</file>`;
         } catch (err: any) {
           console.warn(`Failed to process ${file}: ${err.message}`);
           return null;
@@ -72,6 +70,27 @@ async function generateCompressedContent(files: string[]): Promise<string> {
 
   const validResults = results.filter(Boolean).join("\n\n");
   return `<context compressed="true">\n${validResults}\n</context>`;
+}
+
+/**
+ * Generate XML-tagged content (no RTK compression) with parallel execution
+ */
+async function generateXmlContent(files: string[]): Promise<string> {
+  const results = await Promise.all(
+    files.map(async (file) => {
+      try {
+        const fileContent = await fs.promises.readFile(file, "utf-8");
+        const absolutePath = file.replace(/\\/g, "/");
+        return `<file src="${absolutePath}">\n${fileContent}</file>`;
+      } catch (err: any) {
+        console.warn(`Failed to process ${file}: ${err.message}`);
+        return null;
+      }
+    })
+  );
+
+  const validResults = results.filter(Boolean).join("\n\n");
+  return `<context>\n${validResults}\n</context>`;
 }
 
 /**
@@ -331,7 +350,7 @@ export function activate(context: vscode.ExtensionContext) {
       // Check RTK availability first
       if (!(await isRtkInstalled())) {
         vscode.window.showWarningMessage(
-          "RTK not found. Install with: brew install rtk-ai/tap/rtk. Using full content instead."
+          "RTK not found. Using full content instead; Refer to installation steps in https://github.com/rtk-ai/rtk#installation"
         );
         // Fallback to regular copy
         await vscode.commands.executeCommand("extension.copyToLLM", uri, selectedUris);
@@ -434,41 +453,28 @@ async function getExplorerSelection(): Promise<vscode.Uri[] | undefined> {
 }
 
 async function copySelectedToLLM(uris: vscode.Uri[]) {
-  const directories: vscode.Uri[] = [];
-  const files: vscode.Uri[] = [];
+  const allFiles: string[] = [];
 
   for (const uri of uris) {
     try {
       const stats = fs.statSync(uri.fsPath);
       if (stats.isDirectory()) {
-        directories.push(uri);
+        const dirFiles = await getFilesByExtensions(uri.fsPath);
+        allFiles.push(...dirFiles);
       } else if (stats.isFile()) {
-        files.push(uri);
+        allFiles.push(uri.fsPath);
       }
     } catch {
       // Skip inaccessible paths
     }
   }
 
-  let content = "";
-
-  // Process directories
-  for (const dir of directories) {
-    const dirFiles = await getFilesByExtensions(dir.fsPath);
-    content += await generateContent(dir.fsPath, dirFiles);
+  if (allFiles.length === 0) {
+    vscode.window.showWarningMessage("No files to copy");
+    return;
   }
 
-  // Process individual files
-  for (const file of files) {
-    try {
-      const fileContent = await fs.promises.readFile(file.fsPath, "utf-8");
-      const label = getDisplayPath(file.fsPath);
-      content += `${label}:\n\`\`\`\n${fileContent}\n\`\`\`\n\n`;
-    } catch {
-      // Skip unreadable files
-    }
-  }
-
+  const content = await generateXmlContent(allFiles);
   await vscode.env.clipboard.writeText(content);
   vscode.window.showInformationMessage("Content copied to clipboard");
 
@@ -476,12 +482,19 @@ async function copySelectedToLLM(uris: vscode.Uri[]) {
 }
 
 async function copyFolderToLLM(uris: vscode.Uri[]) {
-  let content = "";
+  const allFiles: string[] = [];
+
   for (const uri of uris) {
     const files = await getFilesByExtensions(uri.fsPath);
-    content += await generateContent(uri.fsPath, files);
+    allFiles.push(...files);
   }
 
+  if (allFiles.length === 0) {
+    vscode.window.showWarningMessage("No files to copy");
+    return;
+  }
+
+  const content = await generateXmlContent(allFiles);
   await vscode.env.clipboard.writeText(content);
   vscode.window.showInformationMessage("Content copied to clipboard");
 
@@ -490,9 +503,7 @@ async function copyFolderToLLM(uris: vscode.Uri[]) {
 
 async function copyFileToClipboard(filePath: string) {
   try {
-    const fileContent = await fs.promises.readFile(filePath, "utf-8");
-    const label = getDisplayPath(filePath);
-    const content = `${label}:\n\`\`\`\n${fileContent}\n\`\`\``;
+    const content = await generateXmlContent([filePath]);
     await vscode.env.clipboard.writeText(content);
     vscode.window.showInformationMessage("Content copied to clipboard");
   } catch (err: any) {

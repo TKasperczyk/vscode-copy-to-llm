@@ -2,7 +2,7 @@
   "name": "copy-to-llm-rtk",
   "displayName": "Copy to LLM with RTK",
   "description": "Copy directory or file contents to LLM format with optional RTK compression for 60-90% token savings",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "engines": {
     "vscode": "^1.60.0"
   },

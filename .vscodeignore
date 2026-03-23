@@ -1,0 +1,13 @@
+.vscode/**
+src/**
+.github/**
+.gitignore
+tsconfig.json
+pnpm-lock.yaml
+presentation.gif
+FS_MCP_FLAG
+**/*.ts
+**/*.map
+node_modules/**/.github/**
+node_modules/**/test/**
+node_modules/**/tests/**
